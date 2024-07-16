@@ -1,0 +1,6 @@
+rasterio
+numpy
+tqdm
+geopandas
+shapely
+pillow
