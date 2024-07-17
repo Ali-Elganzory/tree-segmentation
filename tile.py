@@ -100,9 +100,9 @@ if __name__ == "__main__":
                 ANNOTATION_FILEPATH_TEMPLATE.format(zone)
             )
             unique_labels = annotations["Label"].unique()
-            LABELS.update(
-                {label: len(LABELS) + i for i, label in enumerate(unique_labels)}
-            )
+            for label in unique_labels:
+                if label not in LABELS:
+                    LABELS[label] = len(LABELS)
             annotations["Label"] = annotations["Label"].map(LABELS).astype(int)
 
             mask = np.zeros((src.height, src.width), dtype=np.uint8)
@@ -140,3 +140,7 @@ if __name__ == "__main__":
                     )
 
             print("\n" + ("-" * 50) + "\n")
+
+        # Save labels
+        with open(DATASET_FOLDER + "labels.txt", "w") as f:
+            f.write("\n".join(f"{label}: {name}" for name, label in LABELS.items()))
