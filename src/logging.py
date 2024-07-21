@@ -32,6 +32,7 @@ def enable(log_level: LogLevel = LogLevel.INFO):
     """
     This function disables printing when not in the main process
     """
+    # Built-in print
     global _builtin_print, _logging_print, LOG_LEVEL
 
     if log_level != LOG_LEVEL:
@@ -52,6 +53,7 @@ def enable(log_level: LogLevel = LogLevel.INFO):
         if log_level.value >= LOG_LEVEL.value or force:
             _builtin_print(
                 log_prefix(),
+                flush=True,
                 *args,
                 **kwargs,
             )
@@ -59,3 +61,12 @@ def enable(log_level: LogLevel = LogLevel.INFO):
     __builtin__.print = print
 
     _logging_print = print
+
+    # TQDM
+    from functools import partial
+    import tqdm
+
+    __init__ = tqdm.tqdm.__init__
+    tqdm.tqdm.__init__ = lambda self, *args, **kwargs: __init__(
+        self, position=get_global_rank() if is_enabled() else 0, *args, **kwargs
+    )

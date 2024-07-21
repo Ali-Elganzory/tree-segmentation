@@ -28,10 +28,15 @@ class DinoV2Model(torch.nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
         self.num_classes = num_classes
+
         self.backbone = torch.hub.load(
             "facebookresearch/dinov2", "dinov2_vits14_reg", pretrained=True
         )
-        # Upscale to 224x224, head with multiple layers
+
+        # Freeze backbone
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+
         self.head = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(
                 in_channels=self.backbone.embed_dim,
