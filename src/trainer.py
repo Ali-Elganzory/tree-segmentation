@@ -177,7 +177,7 @@ class Trainer:
         Args:
             train_loader (DataLoader): The training data loader.
             val_loader (DataLoader): The validation data loader.
-            epochs (int): The number of epochs to train for.
+            epochs (int): The number of epochs to train.
 
         Returns:
             float: The time taken to train the model in seconds.
