@@ -4,8 +4,7 @@ import torch
 from typer import Typer
 
 from src import logging
-from src import distributed
-from src.trainer import Trainer
+from src.trainer import Trainer, LossFn
 from src.dataset import TreesDataLoaders
 from src.model import DinoV2Model as Model
 
@@ -34,7 +33,7 @@ def train(
     dataloaders = TreesDataLoaders(
         folder=folder,
         batch_size=32,
-        num_workers=4,
+        num_workers=8,
         transform=Model.transforms,
         augmentations=Model.augmentations,
     )
@@ -45,6 +44,7 @@ def train(
     # Train
     trainer = Trainer(
         model=model,
+        loss_fn=LossFn.focal_tversky,
         results_file="results.csv",
     )
     trainer.train(

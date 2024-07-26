@@ -1,7 +1,7 @@
 from time import time
 from enum import Enum
 from pathlib import Path
-from typing import Tuple, Type, List, Union
+from typing import Tuple, Type, List, Union, Optional
 
 import tqdm
 import torch
@@ -11,6 +11,7 @@ from torch import distributed as TorchDistributed
 
 from src.logging import log_prefix
 from src import distributed as dist
+from src.losses import FocalTverskyLoss
 
 
 class Optimizer(Enum):
@@ -51,6 +52,7 @@ LR_SCHEDULERS = {
 
 class LossFn(Enum):
     cross_entropy = "cross_entropy"
+    focal_tversky = "focal_tversky"
 
     @property
     def factory(self):
@@ -59,6 +61,7 @@ class LossFn(Enum):
 
 LOSS_FNS = {
     LossFn.cross_entropy: nn.CrossEntropyLoss,
+    LossFn.focal_tversky: FocalTverskyLoss,
 }
 
 
@@ -69,15 +72,15 @@ class Trainer:
         optimizer: Union[
             optim.Optimizer, Type[optim.Optimizer], Optimizer
         ] = Optimizer.adamw,
-        lr: float = 1e-2,
-        weight_decay: float = 1e-2,
+        lr: float = 0.001,
+        weight_decay: float = 0.01,
         lr_scheduler: Union[
             optim.lr_scheduler._LRScheduler,
             Type[optim.lr_scheduler._LRScheduler],
             LR_Scheduler,
         ] = LR_Scheduler.step,
-        scheduler_step_size: int = 200,
-        scheduler_gamma: float = 0.97,
+        scheduler_step_size: int = 350,
+        scheduler_gamma: float = 0.68,
         scheduler_step_every_epoch: bool = False,
         loss_fn: Union[nn.Module, Type[nn.Module], LossFn] = LossFn.cross_entropy,
         results_file: str = None,
@@ -127,6 +130,8 @@ class Trainer:
         if not isinstance(self.loss_fn, nn.Module):
             if isinstance(self.loss_fn, LossFn):
                 self.loss_fn = self.loss_fn.factory()
+
+        torch.set_printoptions(linewidth=500)
 
     @property
     def pb_desc_template(self):
@@ -199,7 +204,9 @@ class Trainer:
             if dist.is_enabled():
                 TorchDistributed.barrier()
 
-            val_loss, val_accuracy, _ = self.eval(val_loader, epoch, epochs)
+            val_loss, val_accuracy, confusion_matrix, _ = self.eval(
+                val_loader, epoch, epochs
+            )
 
             if dist.is_enabled():
                 TorchDistributed.barrier()
@@ -227,6 +234,7 @@ class Trainer:
                 f"Val Loss: {val_loss:.4f}, "
                 f"Val Accuracy: {val_accuracy:.4f}"
             )
+            print(f"Confusion Matrix:\n{confusion_matrix}")
             print("-" * 80)
 
             if dist.is_main_process():
@@ -275,12 +283,20 @@ class Trainer:
         epoch: int = None,
         epochs: int = None,
         return_predictions: bool = False,
-    ) -> Tuple[float, float, Union[torch.Tensor, None]]:
+    ) -> Tuple[float, float, torch.Tensor, Optional[torch.Tensor]]:
         with torch.no_grad():
             self.model.eval()
 
             cumulative_loss = 0.0
             cumulative_accuracy = 0.0
+
+            num_classes = self._inner_model.num_classes
+            confusion_matrix = torch.zeros(
+                num_classes,
+                num_classes,
+                device=self.device,
+                dtype=torch.int32,
+            )
 
             if return_predictions:
                 all_predictions = torch.tensor([], device=self.device)
@@ -294,10 +310,15 @@ class Trainer:
                 ),
             ):
                 loss, accuracy, predictions = self.eval_step(
-                    data, target, return_predictions
+                    data, target, return_predictions=True
                 )
                 cumulative_loss += loss
                 cumulative_accuracy += accuracy
+
+                confusion_matrix += torch.bincount(
+                    torch.flatten(target.to(self.device) * num_classes + predictions),
+                    minlength=num_classes**2,
+                ).reshape(num_classes, num_classes)
 
                 if return_predictions:
                     all_predictions = torch.cat([all_predictions, predictions])
@@ -307,6 +328,7 @@ class Trainer:
             return (
                 cumulative_loss / len(data_loader),
                 cumulative_accuracy / len(data_loader),
+                confusion_matrix,
                 predictions if return_predictions else None,
             )
 

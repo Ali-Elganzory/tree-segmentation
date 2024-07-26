@@ -23,9 +23,36 @@ TEST_POLYGONS = gpd.read_file(TEST_POLYGONS_FILEPATH)
 TRAIN_SPLIT_DIR = DATASET_FOLDER + "train"
 TEST_SPLIT_DIR = DATASET_FOLDER + "test"
 
-TILE_SIZE = 256
+TILE_SIZE = 504
 LABELS: dict[str, int] = {
     "Background": 0,
+}
+
+MAP: dict[str, str] = {
+    "Acer": "ACPE",
+    "PIGL": "Picea",
+    "PIMA": "Picea",
+    "PIRU": "Picea",
+    "POGR": "Populus",
+    "POTR": "Populus",
+    "QURU": "BEAL",
+    "Feuillus": "ACSA",
+    "Conifere": "Picea",
+    "FRNI": "BEAL",
+    "Betula": "BEAL",
+    "PRPE": "ACSA",
+    "POBA": "Populus",
+    "BEPO": "BEPA",
+    "OSVI": "FAGR",
+    # "QURU": "Background",
+    # "Feuillus": "Background",
+    # "Conifere": "Background",
+    # "FRNI": "Background",
+    # "Betula": "Background",
+    # "PRPE": "Background",
+    # "POBA": "Background",
+    # "BEPO": "Background",
+    # "OSVI": "Background",
 }
 
 
@@ -99,6 +126,7 @@ if __name__ == "__main__":
             annotations: gpd.GeoDataFrame = gpd.read_file(
                 ANNOTATION_FILEPATH_TEMPLATE.format(zone)
             )
+            annotations["Label"] = annotations["Label"].replace(MAP)
             unique_labels = annotations["Label"].unique()
             for label in unique_labels:
                 if label not in LABELS:
