@@ -9,8 +9,10 @@ class FocalTverskyLoss(torch.nn.Module):
         gamma (float): Focal parameter.
     """
 
-    def __init__(self, gamma=0.75):
+    def __init__(self, alpha: float = 0.7, beta: float = 0.3, gamma: float = 0.75):
         super(FocalTverskyLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
         self.gamma = gamma
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor):
@@ -24,21 +26,26 @@ class FocalTverskyLoss(torch.nn.Module):
         Returns:
             torch.Tensor: Loss.
         """
-        y_pred = y_pred.argmax(dim=1).squeeze(1)
+        num_classes = y_pred.shape[1]
+
+        # Get predictions
+        y_pred = y_pred.argmax(dim=1)
 
         # One-hot encode
-        y_true = (
-            torch.nn.functional.one_hot(y_true, num_classes=y_pred.shape[1])
-            .permute(0, 3, 1, 2)
-            .float()
-        )
-        y_pred = (
-            torch.nn.functional.one_hot(y_pred, num_classes=y_pred.shape[1])
-            .permute(0, 3, 1, 2)
-            .float()
-        )
+        y_true = torch.nn.functional.one_hot(y_true, num_classes).permute(0, 3, 1, 2)
+        y_pred = torch.nn.functional.one_hot(y_pred, num_classes).permute(0, 3, 1, 2)
 
-        print(y_pred.shape, y_true.shape)
-        exit()
+        # Calculate True Positives, False Positives, False Negatives
+        tp = torch.sum(y_pred * y_true, dim=(1, 2, 3))
+        fp = torch.sum(y_pred * (1 - y_true), dim=(1, 2, 3))
+        fn = torch.sum((1 - y_pred) * y_true, dim=(1, 2, 3))
 
-        return focal_tversky.mean()
+        tversky = (tp + 1e-6) / (tp + self.alpha * fp + self.beta * fn + 1e-6)
+
+        # Calculate Focal Tversky
+        focal_tversky = (1 - tversky) ** (1 / self.gamma)
+
+        # Calculate loss
+        loss = torch.sum(focal_tversky, dim=1, requires_grad=True)
+
+        return loss.mean()
