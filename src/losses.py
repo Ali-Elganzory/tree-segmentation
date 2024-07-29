@@ -29,16 +29,19 @@ class FocalTverskyLoss(torch.nn.Module):
         num_classes = y_pred.shape[1]
 
         # Get predictions
-        y_pred = y_pred.argmax(dim=1)
+        y_pred = y_pred.softmax(dim=1)
 
-        # One-hot encode
-        y_true = torch.nn.functional.one_hot(y_true, num_classes).permute(0, 3, 1, 2)
-        y_pred = torch.nn.functional.one_hot(y_pred, num_classes).permute(0, 3, 1, 2)
+        # One-hot encode ground truth
+        y_true = (
+            torch.nn.functional.one_hot(y_true, num_classes)
+            .permute(0, 3, 1, 2)
+            .to(y_pred.dtype)
+        )
 
         # Calculate True Positives, False Positives, False Negatives
-        tp = torch.sum(y_pred * y_true, dim=(1, 2, 3))
-        fp = torch.sum(y_pred * (1 - y_true), dim=(1, 2, 3))
-        fn = torch.sum((1 - y_pred) * y_true, dim=(1, 2, 3))
+        tp = torch.sum(y_pred * y_true, dim=[2, 3])
+        fp = torch.sum(y_pred * (1 - y_true), dim=[2, 3])
+        fn = torch.sum((1 - y_pred) * y_true, dim=[2, 3])
 
         tversky = (tp + 1e-6) / (tp + self.alpha * fp + self.beta * fn + 1e-6)
 
@@ -46,6 +49,6 @@ class FocalTverskyLoss(torch.nn.Module):
         focal_tversky = (1 - tversky) ** (1 / self.gamma)
 
         # Calculate loss
-        loss = torch.sum(focal_tversky, dim=1, requires_grad=True)
+        loss = torch.sum(focal_tversky, dim=1)
 
         return loss.mean()

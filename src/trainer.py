@@ -60,7 +60,9 @@ class LossFn(Enum):
 
 
 LOSS_FNS = {
-    LossFn.cross_entropy: nn.CrossEntropyLoss,
+    LossFn.cross_entropy: lambda: lambda x, y, weight=None: nn.CrossEntropyLoss(weight)(
+        x, y
+    ),
     LossFn.focal_tversky: FocalTverskyLoss,
 }
 
@@ -138,12 +140,30 @@ class Trainer:
         return f"{log_prefix()} " + "Epoch {}/{} - {}"
 
     def train_step(
-        self, data: torch.Tensor, target: torch.Tensor
+        self,
+        data: torch.Tensor,
+        target: torch.Tensor,
+        labels: torch.Tensor,
     ) -> Tuple[float, float]:
         self.optimizer.zero_grad()
         data, target = data.to(self.device), target.to(self.output_device)
         output = self.model(data)
-        loss = self.loss_fn(output, target)
+        loss_weight = (
+            None
+            if labels is None
+            else torch.tensor(
+                data.size(0) * data.size(2) * data.size(3),
+                device=self.device,
+            )
+            / (
+                torch.tensor(
+                    list(map(lambda label: (target == label).sum(), labels)),
+                    device=self.device,
+                )
+                + 1e-6
+            )
+        )
+        loss = self.loss_fn(output, target, loss_weight)
         loss.backward()
         self.optimizer.step()
         if not self.scheduler_step_every_epoch:
@@ -157,6 +177,7 @@ class Trainer:
         data_loader: DataLoader,
         epoch: int,
         epochs: int,
+        labels: torch.Tensor = None,
     ) -> Tuple[float, float]:
         cumulative_loss = 0.0
         cumulative_accuracy = 0.0
@@ -165,7 +186,7 @@ class Trainer:
             data_loader,
             desc=self.pb_desc_template.format(epoch, epochs, "Train"),
         ):
-            loss, accuracy = self.train_step(data, target)
+            loss, accuracy = self.train_step(data, target, labels)
             cumulative_loss += loss
             cumulative_accuracy += accuracy
 
@@ -181,6 +202,7 @@ class Trainer:
         train_loader: DataLoader,
         val_loader: DataLoader,
         epochs: int,
+        labels: torch.Tensor = None,
     ) -> Tuple[List[float], List[float], List[float], List[float], float]:
         """Train the model.
 
@@ -198,7 +220,9 @@ class Trainer:
         val_losses, val_accuracies = [], []
 
         for epoch in range(self.epochs_already_trained + 1, epochs + 1):
-            train_loss, train_accuracy = self.train_epoch(train_loader, epoch, epochs)
+            train_loss, train_accuracy = self.train_epoch(
+                train_loader, epoch, epochs, labels
+            )
             self.epochs_already_trained = epochs
 
             if dist.is_enabled():

@@ -5,7 +5,7 @@ from typer import Typer
 
 from src import logging
 from src.trainer import Trainer, LossFn
-from src.dataset import TreesDataLoaders
+from src.dataset import TreesDataLoaders, VOCDataLoaders
 from src.model import DinoV2Model as Model
 
 app = Typer()
@@ -30,9 +30,15 @@ def train(
     setup(verbose)
 
     # Dataset
-    dataloaders = TreesDataLoaders(
-        folder=folder,
-        batch_size=32,
+    # dataloaders = TreesDataLoaders(
+    #     folder=folder,
+    #     batch_size=16,
+    #     num_workers=8,
+    #     transform=Model.transforms,
+    #     augmentations=Model.augmentations,
+    # )
+    dataloaders = VOCDataLoaders(
+        batch_size=16,
         num_workers=8,
         transform=Model.transforms,
         augmentations=Model.augmentations,
@@ -44,7 +50,6 @@ def train(
     # Train
     trainer = Trainer(
         model=model,
-        loss_fn=LossFn.focal_tversky,
         results_file="results.csv",
     )
     trainer.train(

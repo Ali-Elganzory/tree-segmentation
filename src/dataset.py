@@ -9,6 +9,7 @@ from PIL import Image
 from torchvision.transforms import Compose
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataset import random_split
+from torchvision.datasets import VOCSegmentation
 
 
 class TreesDataset(Dataset):
@@ -141,3 +142,47 @@ class TreesDataLoaders:
                 line.split(":")[1]: int(line.split(":")[0])
                 for line in f.read().splitlines()
             }
+
+
+class VOCDataLoaders:
+    def __init__(
+        self,
+        batch_size: int,
+        num_workers: int = 0,
+        transform: Callable = None,
+        augmentations: Callable = None,
+    ):
+        self.train_dataset = VOCSegmentation(
+            root="data/VOCdevkit/VOC2012",
+            year="2012",
+            image_set="train",
+            download=True,
+            transform=Compose([a for a in [augmentations, transform] if a]),
+            target_transform=transform,
+        )
+        self.val_dataset = VOCSegmentation(
+            root="data/VOCdevkit/VOC2012",
+            year="2012",
+            image_set="val",
+            download=True,
+            transform=transform,
+            target_transform=transform,
+        )
+
+        self.train = DataLoader(
+            dataset=self.train_dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            shuffle=True,
+        )
+        self.val = DataLoader(
+            dataset=self.val_dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            shuffle=False,
+        )
+
+        print(self.train_dataset.classes)
+
+        # self.labels = self.train_dataset.classes
+        # self.labels = {label: i for i, label in enumerate(self.labels)}
