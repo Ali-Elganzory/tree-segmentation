@@ -4,9 +4,9 @@ import torch
 from typer import Typer
 
 from src import logging
-from src.trainer import Trainer, LossFn
-from src.dataset import TreesDataLoaders, VOCDataLoaders
+from src.dataset import Datasets
 from src.model import DinoV2Model as Model
+from src.trainer import Trainer, LossFn, Optimizer, LR_Scheduler
 
 app = Typer()
 
@@ -23,21 +23,19 @@ def setup(verbose: bool = True):
 
 @app.command()
 def train(
-    folder: Path = Path("data/quebec_trees_dataset_2021-09-02"),
+    dataset: Datasets = Datasets.voc.value,
+    loss: LossFn = LossFn.cross_entropy.value,
+    weighted_loss: bool = True,
+    batch_norm: bool = True,
+    skip_batch_norm_on_trans_conv: bool = False,
     epochs: int = 1,
+    results_file: Path = Path("results.csv"),
     verbose: bool = True,
 ):
     setup(verbose)
 
     # Dataset
-    # dataloaders = TreesDataLoaders(
-    #     folder=folder,
-    #     batch_size=16,
-    #     num_workers=8,
-    #     transform=Model.transforms,
-    #     augmentations=Model.augmentations,
-    # )
-    dataloaders = VOCDataLoaders(
+    dataloaders = dataset.factory(
         batch_size=16,
         num_workers=8,
         transform=Model.transforms,
@@ -45,17 +43,31 @@ def train(
     )
 
     # Model
-    model = Model(num_classes=len(dataloaders.labels))
+    model = Model(
+        num_classes=21,
+        batch_norm=batch_norm,
+        skip_batch_norm_on_trans_conv=skip_batch_norm_on_trans_conv,
+    )
 
     # Train
     trainer = Trainer(
         model=model,
-        results_file="results.csv",
+        results_file=results_file,
+        # Hyperparameters
+        optimizer=Optimizer.adamw,
+        loss_fn=loss,
+        lr_scheduler=LR_Scheduler.step,
+        lr=1e-4,
+        scheduler_gamma=0.97,
+        scheduler_step_size=200,
+        scheduler_step_every_epoch=False,
+        weight_decay=1e-2,
     )
     trainer.train(
         epochs=epochs,
         train_loader=dataloaders.train,
         val_loader=dataloaders.val,
+        labels=torch.tensor(range(21)) if weighted_loss else None,
     )
 
     # Save

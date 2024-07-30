@@ -11,7 +11,7 @@ from torch import distributed as TorchDistributed
 
 from src.logging import log_prefix
 from src import distributed as dist
-from src.losses import FocalTverskyLoss
+from src.losses import FocalLoss, FocalTverskyLoss
 
 
 class Optimizer(Enum):
@@ -52,6 +52,7 @@ LR_SCHEDULERS = {
 
 class LossFn(Enum):
     cross_entropy = "cross_entropy"
+    focal = "focal"
     focal_tversky = "focal_tversky"
 
     @property
@@ -63,6 +64,7 @@ LOSS_FNS = {
     LossFn.cross_entropy: lambda: lambda x, y, weight=None: nn.CrossEntropyLoss(weight)(
         x, y
     ),
+    LossFn.focal: FocalLoss,
     LossFn.focal_tversky: FocalTverskyLoss,
 }
 
@@ -74,15 +76,15 @@ class Trainer:
         optimizer: Union[
             optim.Optimizer, Type[optim.Optimizer], Optimizer
         ] = Optimizer.adamw,
-        lr: float = 0.001,
+        lr: float = 0.0001,
         weight_decay: float = 0.01,
         lr_scheduler: Union[
             optim.lr_scheduler._LRScheduler,
             Type[optim.lr_scheduler._LRScheduler],
             LR_Scheduler,
         ] = LR_Scheduler.step,
-        scheduler_step_size: int = 350,
-        scheduler_gamma: float = 0.68,
+        scheduler_step_size: int = 200,
+        scheduler_gamma: float = 0.97,
         scheduler_step_every_epoch: bool = False,
         loss_fn: Union[nn.Module, Type[nn.Module], LossFn] = LossFn.cross_entropy,
         results_file: str = None,
@@ -163,7 +165,10 @@ class Trainer:
                 + 1e-6
             )
         )
-        loss = self.loss_fn(output, target, loss_weight)
+        if loss_weight is not None:
+            loss = self.loss_fn(output, target, loss_weight)
+        else:
+            loss = self.loss_fn(output, target)
         loss.backward()
         self.optimizer.step()
         if not self.scheduler_step_every_epoch:
@@ -218,6 +223,7 @@ class Trainer:
 
         losses, accuracies = [], []
         val_losses, val_accuracies = [], []
+        mious, f1s = [], []
 
         for epoch in range(self.epochs_already_trained + 1, epochs + 1):
             train_loss, train_accuracy = self.train_epoch(
@@ -228,7 +234,7 @@ class Trainer:
             if dist.is_enabled():
                 TorchDistributed.barrier()
 
-            val_loss, val_accuracy, confusion_matrix, _ = self.eval(
+            val_loss, val_accuracy, miou, f1, confusion_matrix, _ = self.eval(
                 val_loader, epoch, epochs
             )
 
@@ -239,16 +245,20 @@ class Trainer:
                     f"Train Loss: {train_loss:.4f}, "
                     f"Train Accuracy: {train_accuracy:.4f}, "
                     f"Val Loss: {val_loss:.4f}, "
-                    f"Val Accuracy: {val_accuracy:.4f}",
+                    f"Val Accuracy: {val_accuracy:.4f}, "
+                    f"mIoU: {miou:.4f}, "
+                    f"F1 Score: {f1:.4f}",
                     force=True,
                 )
                 metrics = torch.tensor(
-                    [train_loss, train_accuracy, val_loss, val_accuracy],
+                    [train_loss, train_accuracy, val_loss, val_accuracy, miou, f1],
                     device=self.device,
                 )
                 TorchDistributed.all_reduce(metrics)
                 metrics /= TorchDistributed.get_world_size()
-                train_loss, train_accuracy, val_loss, val_accuracy = metrics.tolist()
+                train_loss, train_accuracy, val_loss, val_accuracy, miou, f1 = (
+                    metrics.tolist()
+                )
                 TorchDistributed.barrier()
 
             print(
@@ -256,9 +266,22 @@ class Trainer:
                 f"Train Loss: {train_loss:.4f}, "
                 f"Train Accuracy: {train_accuracy:.4f}, "
                 f"Val Loss: {val_loss:.4f}, "
-                f"Val Accuracy: {val_accuracy:.4f}"
+                f"Val Accuracy: {val_accuracy:.4f}, "
+                f"mIoU: {miou:.4f}, "
+                f"F1 Score: {f1:.4f}",
             )
-            print(f"Confusion Matrix:\n{confusion_matrix}")
+
+            # Print confusion matrix
+            confusion_matrix_string = f"Confusion Matrix:\n"
+            bg_color_code = lambda score: f"\033[48;2;0;{255 - int(score * 255)};0m"
+            for i in range(confusion_matrix.size(0)):
+                for j in range(confusion_matrix.size(1)):
+                    confusion_matrix_string += (
+                        bg_color_code(confusion_matrix[i, i]) if i == j else "\033[0m"
+                    ) + f"{confusion_matrix[i, j]:.2f} "
+                confusion_matrix_string += "\033[0m\n"
+            print(confusion_matrix_string, end="")
+
             print("-" * 80)
 
             if dist.is_main_process():
@@ -266,6 +289,8 @@ class Trainer:
                 accuracies.append(train_accuracy)
                 val_losses.append(val_loss)
                 val_accuracies.append(val_accuracy)
+                mious.append(miou)
+                f1s.append(f1)
 
             if dist.is_enabled():
                 TorchDistributed.barrier()
@@ -277,12 +302,17 @@ class Trainer:
                 "train_accuracy": accuracies,
                 "val_loss": val_losses,
                 "val_accuracy": val_accuracies,
+                "mIoU": mious,
+                "f1": f1s,
             }
             with open(self.results_file, "w") as f:
-                f.write("epoch,train_loss,train_accuracy,val_loss,val_accuracy\n")
+                f.write(
+                    "epoch,train_loss,train_accuracy,val_loss,val_accuracy,mIoU,f1\n"
+                )
                 for i in range(epochs):
                     f.write(
-                        f"{data['epoch'][i]},{data['train_loss'][i]},{data['train_accuracy'][i]},{data['val_loss'][i]},{data['val_accuracy'][i]}\n"
+                        f"{data['epoch'][i]},{data['train_loss'][i]},{data['train_accuracy'][i]},{data['val_loss'][i]},"
+                        f"{data['val_accuracy'][i]},{data['mIoU'][i]},{data['f1']}\n"
                     )
 
         return losses, accuracies, val_losses, val_accuracies, time() - start_time
@@ -307,7 +337,7 @@ class Trainer:
         epoch: int = None,
         epochs: int = None,
         return_predictions: bool = False,
-    ) -> Tuple[float, float, torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[float, float, float, float, torch.Tensor, Optional[torch.Tensor]]:
         with torch.no_grad():
             self.model.eval()
 
@@ -339,10 +369,35 @@ class Trainer:
                 cumulative_loss += loss
                 cumulative_accuracy += accuracy
 
+                # Calculate confusion matrix
                 confusion_matrix += torch.bincount(
                     torch.flatten(target.to(self.device) * num_classes + predictions),
                     minlength=num_classes**2,
                 ).reshape(num_classes, num_classes)
+
+                # Normalize confusion matrix
+                confusion_matrix = (
+                    confusion_matrix.float()
+                    / confusion_matrix.sum(dim=1, keepdim=True).clamp(min=1e-6)
+                ).round(decimals=2)
+
+                # Calculate mIoU
+                iou = confusion_matrix.diag() / (
+                    confusion_matrix.sum(dim=0)
+                    + confusion_matrix.sum(dim=1)
+                    - confusion_matrix.diag()
+                ).clamp(min=1e-6)
+                miou = iou.mean()
+
+                # Calculate F1 Score
+                precision = confusion_matrix.diag() / confusion_matrix.sum(dim=0).clamp(
+                    min=1e-6
+                )
+                recall = confusion_matrix.diag() / confusion_matrix.sum(dim=1).clamp(
+                    min=1e-6
+                )
+                f1 = 2 * (precision * recall) / (precision + recall).clamp(min=1e-6)
+                f1 = f1.mean()
 
                 if return_predictions:
                     all_predictions = torch.cat([all_predictions, predictions])
@@ -352,6 +407,8 @@ class Trainer:
             return (
                 cumulative_loss / len(data_loader),
                 cumulative_accuracy / len(data_loader),
+                miou.item(),
+                f1.item(),
                 confusion_matrix,
                 predictions if return_predictions else None,
             )

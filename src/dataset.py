@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from pathlib import Path
 from typing import Callable
 
@@ -8,8 +9,20 @@ import pandas as pd
 from PIL import Image
 from torchvision.transforms import Compose
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.dataset import random_split
 from torchvision.datasets import VOCSegmentation
+from torch.utils.data.dataset import random_split
+
+
+class Datasets(Enum):
+    trees = "trees"
+    voc = "voc"
+
+    @property
+    def factory(self):
+        return {
+            Datasets.trees: TreesDataLoaders,
+            Datasets.voc: VOCDataLoaders,
+        }[self]
 
 
 class TreesDataset(Dataset):
@@ -90,11 +103,11 @@ class TreesDataset(Dataset):
 class TreesDataLoaders:
     def __init__(
         self,
-        folder: Path,
         batch_size: int,
         num_workers: int = 0,
         transform: Callable = None,
         augmentations: Callable = None,
+        folder: Path = Path("data/quebec_trees_dataset_2021-09-02"),
     ):
         self.train_folder = folder / "train"
         self.test_folder = folder / "test"
@@ -152,21 +165,32 @@ class VOCDataLoaders:
         transform: Callable = None,
         augmentations: Callable = None,
     ):
+        def transform_fn(image, mask, to_numpy=True):
+            if to_numpy:
+                image, mask = np.array(image), np.array(mask)
+            transformed = transform(image=image, mask=mask)
+            transformed["mask"][transformed["mask"] == 255] = 0
+            return transformed["image"], transformed["mask"].type(torch.LongTensor)
+
+        def augmentations_fn(image, mask):
+            image, mask = np.array(image), np.array(mask)
+            transformed = augmentations(image=image, mask=mask)
+            image, mask = transformed["image"], transformed["mask"]
+            return transform_fn(image, mask, to_numpy=False)
+
         self.train_dataset = VOCSegmentation(
             root="data/VOCdevkit/VOC2012",
             year="2012",
             image_set="train",
             download=True,
-            transform=Compose([a for a in [augmentations, transform] if a]),
-            target_transform=transform,
+            transforms=augmentations_fn,
         )
         self.val_dataset = VOCSegmentation(
             root="data/VOCdevkit/VOC2012",
             year="2012",
             image_set="val",
             download=True,
-            transform=transform,
-            target_transform=transform,
+            transforms=transform_fn,
         )
 
         self.train = DataLoader(
@@ -181,8 +205,3 @@ class VOCDataLoaders:
             num_workers=num_workers,
             shuffle=False,
         )
-
-        print(self.train_dataset.classes)
-
-        # self.labels = self.train_dataset.classes
-        # self.labels = {label: i for i, label in enumerate(self.labels)}

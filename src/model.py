@@ -26,7 +26,12 @@ class DinoV2Model(torch.nn.Module):
         ]
     )
 
-    def __init__(self, num_classes: int):
+    def __init__(
+        self,
+        num_classes: int,
+        batch_norm: bool = True,
+        skip_batch_norm_on_trans_conv: bool = False,
+    ):
         super().__init__()
         self.num_classes = num_classes
 
@@ -42,24 +47,47 @@ class DinoV2Model(torch.nn.Module):
         self.head = nn.Sequential(
             # Downsample to 32 x 32
             nn.Conv2d(384, 256, kernel_size=3, stride=1),
+            nn.BatchNorm2d(256) if batch_norm else nn.Identity(),
             nn.ReLU(),
             nn.Conv2d(256, 128, kernel_size=3, stride=1),
+            nn.BatchNorm2d(128) if batch_norm else nn.Identity(),
             nn.ReLU(),
             # Upsample to 512 x 512
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            (
+                nn.BatchNorm2d(64)
+                if batch_norm and not skip_batch_norm_on_trans_conv
+                else nn.Identity()
+            ),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            (
+                nn.BatchNorm2d(32)
+                if batch_norm and not skip_batch_norm_on_trans_conv
+                else nn.Identity()
+            ),
             nn.ReLU(),
             nn.ConvTranspose2d(
                 32, self.num_classes, kernel_size=4, stride=2, padding=1
+            ),
+            (
+                nn.BatchNorm2d(self.num_classes)
+                if batch_norm and skip_batch_norm_on_trans_conv
+                else nn.Identity()
             ),
             nn.ReLU(),
             nn.ConvTranspose2d(
                 self.num_classes, self.num_classes, kernel_size=4, stride=2, padding=1
             ),
+            (
+                nn.BatchNorm2d(self.num_classes)
+                if batch_norm and skip_batch_norm_on_trans_conv
+                else nn.Identity()
+            ),
             nn.ReLU(),
             # Downsample to 504 x 504
             nn.Conv2d(self.num_classes, self.num_classes, kernel_size=5, stride=1),
+            nn.BatchNorm2d(self.num_classes) if batch_norm else nn.Identity(),
             nn.ReLU(),
             nn.Conv2d(self.num_classes, self.num_classes, kernel_size=5, stride=1),
         )

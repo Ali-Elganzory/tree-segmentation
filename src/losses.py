@@ -1,5 +1,61 @@
 import torch
 
+from torch.functional import F
+
+
+class FocalLoss(torch.nn.Module):
+    """
+    Focal Loss.
+
+    Args:
+        gamma (float): Focal parameter.
+    """
+
+    def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def forward(
+        self,
+        y_pred: torch.Tensor,
+        y_true: torch.Tensor,
+        weight: torch.Tensor = None,
+    ):
+        """
+        Forward pass.
+
+        Args:
+            y_pred (torch.Tensor): Predictions. Shape (B, C, H, W). B: Batch size, C: Number of classes, H: Height, W: Width.
+            y_true (torch.Tensor): Ground truth. Shape (B, H, W). B: Batch size, H: Height, W: Width.
+
+        Returns:
+            torch.Tensor: Loss.
+        """
+        num_classes = y_pred.shape[1]
+
+        # Get predictions
+        logits = y_pred
+        y_pred = y_pred.sigmoid()
+
+        # One-hot encode ground truth
+        y_true = (
+            torch.nn.functional.one_hot(y_true, num_classes)
+            .permute(0, 3, 1, 2)
+            .to(y_pred.dtype)
+        )
+
+        # Calculate loss
+        ce_loss = F.binary_cross_entropy_with_logits(logits, y_true, reduction="none")
+        p_t = y_pred * y_true + (1 - y_pred) * (1 - y_true)
+        loss = ce_loss * ((1 - p_t) ** self.gamma)
+
+        if self.alpha >= 0:
+            alpha_t = self.alpha * y_true + (1 - self.alpha) * (1 - y_true)
+            loss = alpha_t * loss
+
+        return loss.mean()
+
 
 class FocalTverskyLoss(torch.nn.Module):
     """
