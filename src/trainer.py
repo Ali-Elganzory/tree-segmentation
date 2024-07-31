@@ -1,3 +1,4 @@
+import random
 from time import time
 from enum import Enum
 from pathlib import Path
@@ -5,6 +6,7 @@ from typing import Tuple, Type, List, Union, Optional
 
 import tqdm
 import torch
+import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch import distributed as TorchDistributed
@@ -87,8 +89,18 @@ class Trainer:
         scheduler_gamma: float = 0.97,
         scheduler_step_every_epoch: bool = False,
         loss_fn: Union[nn.Module, Type[nn.Module], LossFn] = LossFn.cross_entropy,
+        seed: int = 42,
         results_file: str = None,
     ):
+        self.seed = seed
+        if self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            torch.cuda.manual_seed(self.seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
         self.model = model
         self.optimizer = optimizer
         self.lr = lr
@@ -165,10 +177,7 @@ class Trainer:
                 + 1e-6
             )
         )
-        if loss_weight is not None:
-            loss = self.loss_fn(output, target, loss_weight)
-        else:
-            loss = self.loss_fn(output, target)
+        loss = self.loss_fn(output, target, loss_weight)
         loss.backward()
         self.optimizer.step()
         if not self.scheduler_step_every_epoch:
@@ -296,6 +305,7 @@ class Trainer:
                 TorchDistributed.barrier()
 
         if self.results_file is not None and dist.is_main_process():
+            print(self.results_file)
             data = {
                 "epoch": range(1, epochs + 1),
                 "train_loss": losses,
@@ -312,7 +322,7 @@ class Trainer:
                 for i in range(epochs):
                     f.write(
                         f"{data['epoch'][i]},{data['train_loss'][i]},{data['train_accuracy'][i]},{data['val_loss'][i]},"
-                        f"{data['val_accuracy'][i]},{data['mIoU'][i]},{data['f1']}\n"
+                        f"{data['val_accuracy'][i]},{data['mIoU'][i]},{data['f1'][i]}\n"
                     )
 
         return losses, accuracies, val_losses, val_accuracies, time() - start_time

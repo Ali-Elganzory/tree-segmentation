@@ -36,23 +36,25 @@ class FocalLoss(torch.nn.Module):
 
         # Get predictions
         logits = y_pred
-        y_pred = y_pred.sigmoid()
+        y_pred_p = y_pred.softmax(dim=1)
 
         # One-hot encode ground truth
-        y_true = (
+        y_true_one_hot = (
             torch.nn.functional.one_hot(y_true, num_classes)
             .permute(0, 3, 1, 2)
             .to(y_pred.dtype)
         )
 
         # Calculate loss
-        ce_loss = F.binary_cross_entropy_with_logits(logits, y_true, reduction="none")
-        p_t = y_pred * y_true + (1 - y_pred) * (1 - y_true)
-        loss = ce_loss * ((1 - p_t) ** self.gamma)
+        ce_loss = F.binary_cross_entropy_with_logits(
+            logits,
+            y_true_one_hot,
+            reduction="none",
+        )
+        loss = ce_loss * (((1 - y_pred_p) * y_true_one_hot) ** self.gamma)
 
         if self.alpha >= 0:
-            alpha_t = self.alpha * y_true + (1 - self.alpha) * (1 - y_true)
-            loss = alpha_t * loss
+            loss = self.alpha * loss
 
         return loss.mean()
 
@@ -71,7 +73,12 @@ class FocalTverskyLoss(torch.nn.Module):
         self.beta = beta
         self.gamma = gamma
 
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor):
+    def forward(
+        self,
+        y_pred: torch.Tensor,
+        y_true: torch.Tensor,
+        weight: torch.Tensor = None,
+    ):
         """
         Forward pass.
 

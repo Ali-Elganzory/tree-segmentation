@@ -27,16 +27,18 @@ def train(
     loss: LossFn = LossFn.cross_entropy.value,
     weighted_loss: bool = True,
     batch_norm: bool = True,
-    skip_batch_norm_on_trans_conv: bool = False,
+    skip_batch_norm_on_trans_conv: bool = True,
     epochs: int = 1,
-    results_file: Path = Path("results.csv"),
+    batch_size: int = 16,
+    results_file: Path = Path("results/results.csv"),
+    save_to: Path = Path("checkpoints/model.pt"),
     verbose: bool = True,
 ):
     setup(verbose)
 
     # Dataset
     dataloaders = dataset.factory(
-        batch_size=16,
+        batch_size=batch_size,
         num_workers=8,
         transform=Model.transforms,
         augmentations=Model.augmentations,
@@ -44,7 +46,7 @@ def train(
 
     # Model
     model = Model(
-        num_classes=21,
+        num_classes=dataloaders.num_classes,
         batch_norm=batch_norm,
         skip_batch_norm_on_trans_conv=skip_batch_norm_on_trans_conv,
     )
@@ -67,11 +69,11 @@ def train(
         epochs=epochs,
         train_loader=dataloaders.train,
         val_loader=dataloaders.val,
-        labels=torch.tensor(range(21)) if weighted_loss else None,
+        labels=torch.tensor(range(dataloaders.num_classes)) if weighted_loss else None,
     )
 
     # Save
-    trainer.save()
+    trainer.save(save_to)
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ class TreesDataset(Dataset):
         self.transform = transform
         self.images_folder = folder / "images"
         self.masks_folder = folder / "masks"
-        self.background_threshold = 0.75
+        self.background_threshold = 0.5
         self.cache_path = folder / f"cache_{self.background_threshold}.csv"
 
         # Create cache if it doesn't exist or if the images or masks have been modified
@@ -155,6 +155,7 @@ class TreesDataLoaders:
                 line.split(":")[1]: int(line.split(":")[0])
                 for line in f.read().splitlines()
             }
+            self.num_classes = len(self.labels)
 
 
 class VOCDataLoaders:
@@ -165,6 +166,8 @@ class VOCDataLoaders:
         transform: Callable = None,
         augmentations: Callable = None,
     ):
+        self.num_classes = 21
+
         def transform_fn(image, mask, to_numpy=True):
             if to_numpy:
                 image, mask = np.array(image), np.array(mask)
@@ -182,14 +185,14 @@ class VOCDataLoaders:
             root="data/VOCdevkit/VOC2012",
             year="2012",
             image_set="train",
-            download=True,
+            download=False,
             transforms=augmentations_fn,
         )
         self.val_dataset = VOCSegmentation(
             root="data/VOCdevkit/VOC2012",
             year="2012",
             image_set="val",
-            download=True,
+            download=False,
             transforms=transform_fn,
         )
 
