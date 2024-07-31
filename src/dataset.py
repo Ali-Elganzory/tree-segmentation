@@ -165,6 +165,10 @@ class TreesDataLoaders:
         self.test_dataset = TreesDataset(
             folder=self.test_folder,
         )
+        self.test_dataset = DatasetWrapper(
+            dataset=self.test_dataset,
+            transform=transform,
+        )
         self.test = DataLoader(
             dataset=self.test_dataset,
             batch_size=batch_size,

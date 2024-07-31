@@ -105,7 +105,7 @@ class DinoV2Model(torch.nn.Module):
             ),
             (
                 nn.BatchNorm2d(self.num_classes)
-                if batch_norm and skip_batch_norm_on_trans_conv
+                if batch_norm and not skip_batch_norm_on_trans_conv
                 else nn.Identity()
             ),
             nn.ReLU(),
@@ -114,7 +114,7 @@ class DinoV2Model(torch.nn.Module):
             ),
             (
                 nn.BatchNorm2d(self.num_classes)
-                if batch_norm and skip_batch_norm_on_trans_conv
+                if batch_norm and not skip_batch_norm_on_trans_conv
                 else nn.Identity()
             ),
             nn.ReLU(),

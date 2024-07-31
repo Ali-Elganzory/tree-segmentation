@@ -132,34 +132,40 @@ trees_commands = [
         Datasets.trees,
         NUM_EPOCHS,
         LossFn.cross_entropy,
+        batch_size=32,
     ),
     command_factory(
         "trees-b64",
         Datasets.trees,
         NUM_EPOCHS,
         LossFn.cross_entropy,
+        batch_size=64,
     ),
     command_factory(
         "trees-deeplab-b16",
         Datasets.trees,
         NUM_EPOCHS,
         LossFn.cross_entropy,
+        batch_size=16,
     ),
     command_factory(
         "trees-deeplab-b32",
         Datasets.trees,
         NUM_EPOCHS,
         LossFn.cross_entropy,
+        batch_size=32,
     ),
     command_factory(
         "trees-deeplab-b64",
         Datasets.trees,
         NUM_EPOCHS,
         LossFn.cross_entropy,
+        batch_size=64,
     ),
 ]
 
 commands = [
+    *voc_commands,
     *trees_commands,
 ]
 

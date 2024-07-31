@@ -80,10 +80,14 @@ def train(
         train_loader=dataloaders.train,
         val_loader=dataloaders.val,
         labels=torch.tensor(range(dataloaders.num_classes)) if weighted_loss else None,
+        save_best_to=save_to,
     )
 
-    # Save
-    trainer.save(save_to)
+    # Evaluate on test set
+    trainer.load_model(save_to)
+    results = trainer.eval(dataloaders.test)
+    with open(str(results_file).replace(".csv", ".txt"), "w") as f:
+        f.write(str(results))
 
 
 if __name__ == "__main__":
