@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import pandas as pd
 from PIL import Image
-from torchvision.transforms import Compose
+from albumentations import Compose
 from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import VOCSegmentation
 from torch.utils.data.dataset import random_split
@@ -30,12 +30,13 @@ class TreesDataset(Dataset):
         self,
         folder: Path,
         transform: Callable = None,
+        background_threshold: float = 0.75,
     ):
         self.folder = folder
         self.transform = transform
         self.images_folder = folder / "images"
         self.masks_folder = folder / "masks"
-        self.background_threshold = 0.5
+        self.background_threshold = background_threshold
         self.cache_path = folder / f"cache_{self.background_threshold}.csv"
 
         # Create cache if it doesn't exist or if the images or masks have been modified
@@ -92,7 +93,22 @@ class TreesDataset(Dataset):
         else:
             mask = Image.open(mask_filepath)
 
+        return image, mask
+
+
+class DatasetWrapper(Dataset):
+    def __init__(self, dataset: Dataset, transform: Callable = None):
+        self.dataset = dataset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        image, mask = self.dataset[idx]
+
         image, mask = np.array(image), np.array(mask)
+
         if self.transform:
             transformed = self.transform(image=image, mask=mask)
             image, mask = transformed["image"], transformed["mask"]
@@ -108,12 +124,14 @@ class TreesDataLoaders:
         transform: Callable = None,
         augmentations: Callable = None,
         folder: Path = Path("data/quebec_trees_dataset_2021-09-02"),
+        background_threshold: float = 0.75,
     ):
         self.train_folder = folder / "train"
         self.test_folder = folder / "test"
 
         self.train_val_dataset = TreesDataset(
             folder=self.train_folder,
+            background_threshold=background_threshold,
         )
         self.train_dataset, self.val_dataset = random_split(
             self.train_val_dataset,
@@ -122,10 +140,14 @@ class TreesDataLoaders:
                 len(self.train_val_dataset) - int(0.8 * len(self.train_val_dataset)),
             ],
         )
-        self.train_dataset.dataset.transform = Compose(
-            [a for a in [augmentations, transform] if a]
+        self.train_dataset = DatasetWrapper(
+            dataset=self.train_dataset,
+            transform=Compose([augmentations, transform]),
         )
-        self.val_dataset.dataset.transform = transform
+        self.val_dataset = DatasetWrapper(
+            dataset=self.val_dataset,
+            transform=transform,
+        )
 
         self.train = DataLoader(
             dataset=self.train_dataset,

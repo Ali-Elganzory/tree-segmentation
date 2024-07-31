@@ -4,8 +4,8 @@ import torch
 from typer import Typer
 
 from src import logging
+from src.model import Models
 from src.dataset import Datasets
-from src.model import DinoV2Model as Model
 from src.trainer import Trainer, LossFn, Optimizer, LR_Scheduler
 
 app = Typer()
@@ -24,12 +24,14 @@ def setup(verbose: bool = True):
 @app.command()
 def train(
     dataset: Datasets = Datasets.voc.value,
+    model: Models = Models.dino.value,
     loss: LossFn = LossFn.cross_entropy.value,
     weighted_loss: bool = True,
     batch_norm: bool = True,
     skip_batch_norm_on_trans_conv: bool = True,
     epochs: int = 1,
     batch_size: int = 16,
+    background_threshold: float = 0.75,
     results_file: Path = Path("results/results.csv"),
     save_to: Path = Path("checkpoints/model.pt"),
     verbose: bool = True,
@@ -37,15 +39,23 @@ def train(
     setup(verbose)
 
     # Dataset
+    kwargs = (
+        {
+            "background_threshold": background_threshold,
+        }
+        if dataset == Datasets.trees.value
+        else {}
+    )
     dataloaders = dataset.factory(
         batch_size=batch_size,
         num_workers=8,
-        transform=Model.transforms,
-        augmentations=Model.augmentations,
+        transform=model.factory.transforms,
+        augmentations=model.factory.augmentations,
+        **kwargs,
     )
 
     # Model
-    model = Model(
+    model = model.factory(
         num_classes=dataloaders.num_classes,
         batch_norm=batch_norm,
         skip_batch_norm_on_trans_conv=skip_batch_norm_on_trans_conv,

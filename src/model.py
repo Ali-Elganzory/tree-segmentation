@@ -1,8 +1,41 @@
+from enum import Enum
+
 import torch
 import numpy as np
 from torch import nn
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from torchvision.models.segmentation import (
+    deeplabv3_resnet50,
+    DeepLabV3_ResNet50_Weights,
+)
+
+
+class Models(Enum):
+    deeplab = "deeplab"
+    dino = "dino"
+
+    @property
+    def factory(self):
+        return {
+            Models.deeplab: DeepLabV3Model,
+            Models.dino: DinoV2Model,
+        }[self]
+
+
+class DeepLabV3Model(torch.nn.Module):
+    transforms = DeepLabV3_ResNet50_Weights.transforms
+
+    augmentations = A.Compose([])
+
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.model = deeplabv3_resnet50(weights=DeepLabV3_ResNet50_Weights.DEFAULT)
+
+        # Change the number of output classes
+        self.model.classifier[-1] = nn.Conv2d(
+            in_channels=256, out_channels=num_classes, kernel_size=1
+        )
 
 
 class DinoV2Model(torch.nn.Module):

@@ -2,6 +2,7 @@ import os
 from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 
+from src.model import Models
 from src.trainer import LossFn
 from src.dataset import Datasets
 
@@ -14,9 +15,11 @@ def command_factory(
     weighted_loss: bool = True,
     batch_norm: bool = True,
     skip_batch_norm_on_trans_conv: bool = True,
+    model: Models = Models.dino,
+    batch_size: int = 16,
 ):
     return (
-        f"python run.py --dataset {dataset.value} --epochs {epochs} --loss {loss.value} {'--no-weighted-loss' if not weighted_loss else ''}"
+        f"python run.py --dataset {dataset.value} --model {model.value} --batch-size {batch_size} --epochs {epochs} --loss {loss.value} {'--no-weighted-loss' if not weighted_loss else ''}"
         f" {' --no-batch-norm' if not batch_norm else ''} {'--no-skip-batch-norm-on-trans-conv' if not skip_batch_norm_on_trans_conv else ''}"
         f" --results-file results/{name}.csv --save-to checkpoints/{name}.pt 2>&1 | tee logs/{name}.log"
     )
@@ -68,18 +71,99 @@ voc_commands = [
         LossFn.focal,
     ),
     command_factory(
-        "voc-focal-tversky",
+        "voc-focal_tversky",
         Datasets.voc,
         NUM_EPOCHS,
         LossFn.focal_tversky,
     ),
 ]
 
-commands = [
-    *voc_commands,
+trees_commands = [
+    command_factory(
+        "trees-cross_entropy",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+        weighted_loss=False,
+        batch_norm=False,
+        skip_batch_norm_on_trans_conv=False,
+    ),
+    command_factory(
+        "trees-cross_entropy-weighted_loss",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+        weighted_loss=True,
+        batch_norm=False,
+        skip_batch_norm_on_trans_conv=False,
+    ),
+    command_factory(
+        "trees-cross_entropy-weighted_loss-batch_norm",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+        weighted_loss=True,
+        batch_norm=True,
+        skip_batch_norm_on_trans_conv=False,
+    ),
+    command_factory(
+        "trees-cross_entropy-weighted_loss-batch_norm-skip_tconv_batch_norm",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+        weighted_loss=True,
+        batch_norm=True,
+        skip_batch_norm_on_trans_conv=True,
+    ),
+    command_factory(
+        "trees-focal",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.focal,
+    ),
+    command_factory(
+        "trees-focal_tversky",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.focal_tversky,
+    ),
+    command_factory(
+        "trees-b32",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+    ),
+    command_factory(
+        "trees-b64",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+    ),
+    command_factory(
+        "trees-deeplab-b16",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+    ),
+    command_factory(
+        "trees-deeplab-b32",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+    ),
+    command_factory(
+        "trees-deeplab-b64",
+        Datasets.trees,
+        NUM_EPOCHS,
+        LossFn.cross_entropy,
+    ),
 ]
 
-gpu_available = [True, True, True]
+commands = [
+    *trees_commands,
+]
+
+gpu_available = [True, True, True, True]
 
 
 def run_command(command: str, gpu_id: int):
