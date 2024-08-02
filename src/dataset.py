@@ -111,7 +111,10 @@ class DatasetWrapper(Dataset):
 
         if self.transform:
             transformed = self.transform(image=image, mask=mask)
-            image, mask = transformed["image"], transformed["mask"]
+            if isinstance(transformed, dict):
+                image, mask = transformed["image"], transformed["mask"]
+            else:
+                image, mask = transformed
 
         return image, mask.type(torch.LongTensor)
 
@@ -212,14 +215,20 @@ class VOCDataLoaders:
             year="2012",
             image_set="train",
             download=False,
-            transforms=augmentations_fn,
+        )
+        self.train_dataset = DatasetWrapper(
+            dataset=self.train_dataset,
+            transform=augmentations_fn,
         )
         self.val_dataset = VOCSegmentation(
             root="data/VOCdevkit/VOC2012",
             year="2012",
             image_set="val",
             download=False,
-            transforms=transform_fn,
+        )
+        self.val_dataset = DatasetWrapper(
+            dataset=self.val_dataset,
+            transform=transform_fn,
         )
 
         self.train = DataLoader(

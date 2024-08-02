@@ -28,7 +28,7 @@ class DeepLabV3Model(torch.nn.Module):
 
     augmentations = A.Compose([])
 
-    def __init__(self, num_classes: int):
+    def __init__(self, num_classes: int, **kwargs):
         super().__init__()
         self.model = deeplabv3_resnet50(weights=DeepLabV3_ResNet50_Weights.DEFAULT)
 
@@ -105,7 +105,7 @@ class DinoV2Model(torch.nn.Module):
             ),
             (
                 nn.BatchNorm2d(self.num_classes)
-                if batch_norm and not skip_batch_norm_on_trans_conv
+                if batch_norm and skip_batch_norm_on_trans_conv
                 else nn.Identity()
             ),
             nn.ReLU(),
@@ -114,7 +114,7 @@ class DinoV2Model(torch.nn.Module):
             ),
             (
                 nn.BatchNorm2d(self.num_classes)
-                if batch_norm and not skip_batch_norm_on_trans_conv
+                if batch_norm and skip_batch_norm_on_trans_conv
                 else nn.Identity()
             ),
             nn.ReLU(),
